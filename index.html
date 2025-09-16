@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AgroBloom — Monitor de Floração</title>
+
+  <!-- Leaflet CSS (mapa) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+e2m0sLZq2P0m3q0y4v+6vQ2VYk7g2gkz6t0hQn3M="
+    crossorigin=""
+  />
+
+  <style>
+    :root{
+      --green-700:#0f766e;
+      --green-100:#ecfdf5;
+      --bg:#f8fafc;
+      --card:#ffffff;
+      --muted:#6b7280;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg, var(--bg), #ffffff);
+      color:#062024;
+      -webkit-font-smoothing:antialiased;
+    }
+
+    header.hero{
+      background: linear-gradient(90deg, rgba(16,185,129,0.08), rgba(14,165,233,0.03));
+      padding:48px 16px;
+      text-align:center;
+      border-bottom-left-radius:24px;
+      border-bottom-right-radius:24px;
+      box-shadow: 0 6px 20px rgba(6, 20, 24, 0.04);
+    }
+    header.hero h1{
+      margin:0;
+      font-size:34px;
+      color:var(--green-700);
+    }
+    header.hero p{
+      margin:12px auto 20px;
+      max-width:760px;
+      color:var(--muted);
+    }
+    .btn{
+      display:inline-block;
+      background:var(--green-700);
+      color:white;
+      padding:10px 16px;
+      border-radius:10px;
+      text-decoration:none;
+      font-weight:600;
+      cursor:pointer;
+      border:none;
+    }
+
+    main.container{
+      max-width:1100px;
+      margin:28px auto;
+      padding:0 16px 48px;
+    }
+
+    .features{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+      gap:16px;
+      margin-bottom:18px;
+    }
+    .card{
+      background:var(--card);
+      border-radius:12px;
+      padding:14px;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.04);
+    }
+    .card h3{margin:0 0 8px;font-size:16px;color:#0f5132}
+    .muted{color:var(--muted);font-size:14px}
+
+    .region-search{
+      display:flex;
+      gap:8px;
+      margin:18px 0 10px;
+      align-items:center;
+    }
+    .region-search input{
+      flex:1;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid #e6e6e6;
+      outline:none;
+      font-size:14px;
+    }
+    .map-card{
+      display:grid;
+      grid-template-columns: 1fr 360px;
+      gap:16px;
+      margin-top:12px;
+    }
+    #map{
+      height:520px;
+      border-radius:12px;
+      overflow:hidden;
+    }
+    .sidebar{
+      background:var(--card);
+      border-radius:12px;
+      padding:12px;
+      height:520px;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.04);
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .sidebar h4{margin:0;color:var(--green-700)}
+    .info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #f1f5f9;color:var(--muted);font-size:14px}
+    canvas{background:#fff;border-radius:8px}
+    footer{
+      margin-top:24px;
+      text-align:center;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    /* Responsividade */
+    @media (max-width:980px){
+      .map-card{grid-template-columns: 1fr}
+      .sidebar{height:auto}
+      #map{height:420px}
+    }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <h1>🌸 AgroBloom</h1>
+    <p>Monitor de floração e vegetação — visualize índices de vegetação (NDVI) com dados de sensoriamento remoto e planeje safras de forma simples.</p>
+    <button id="openMapBtn" class="btn">Explorar Mapa Interativo</button>
+  </header>
+
+  <main class="container">
+    <section class="features">
+      <div class="card">
+        <h3>📊 Monitoramento</h3>
+        <p class="muted">Mapa global com destaque para regiões de maior atividade vegetativa.</p>
+      </div>
+      <div class="card">
+        <h3>🌱 Planejamento</h3>
+        <p class="muted">Períodos ideais de cultivo estimados a partir de picos de vegetação.</p>
+      </div>
+      <div class="card">
+        <h3>📅 Histórico</h3>
+        <p class="muted">Comparação de sazonalidade por ano para tomada de decisão.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="region-search">
+        <input id="regionInput" placeholder="Digite uma cidade ou coordenadas (ex: São Paulo, BR ou -23.55,-46.63)" />
+        <button id="goBtn" class="btn">Ir</button>
+        <button id="resetBtn" class="btn" style="background:#475569">Resetar</button>
+      </div>
+
+      <div class="map-card">
+        <div id="map" class="card"></div>
+
+        <aside class="sidebar">
+          <div>
+            <h4>🔎 Detalhes da Região</h4>
+            <div id="regionName" class="muted" style="margin-top:6px">Clique no mapa para selecionar uma área</div>
+          </div>
+
+          <div class="info-row"><div>Índice NDVI atual</div><div id="ndviVal">—</div></div>
+          <div class="info-row"><div>Período ideal (estimado)</div><div id="idealPeriod">—</div></div>
+          <div class="info-row"><div>Comparação anual</div><div id="compare">—</div></div>
+
+          <div style="margin-top:8px">
+            <h4>📈 Série Temporal (NDVI)</h4>
+            <canvas id="ndviChart" width="320" height="200"></canvas>
+          </div>
+
+          <div style="margin-top:auto; font-size:13px; color:var(--muted)">
+            <div>Dados: simulação / demonstrativo (use APIs MODIS/VIIRS para produção)</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <footer>
+      Dados de satélite (ex.: MODIS/VIIRS) — protótipo hackathon • Salvando ideias para agricultura sustentável
+    </footer>
+  </main>
+
+  <!-- Bibliotecas externas -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1jzY2v9gX3bTqz3V1u5G7X1dTzW3U0k8A2P4y0XU="
+    crossorigin=""
+  ></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    // Inicia o mapa
+    const map = L.map('map', { zoomControl:true }).setView([0, 0], 2);
+
+    // Tile layer (OpenStreetMap)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Camada de exemplo: polígonos/heatmap simplificado (simulados)
+    // Criamos alguns círculos 'hotspots' para destacar vegetação
+    const hotspots = [
+      { name: 'Região Amazônica (BR)', coords:[-3.4653,-62.2159], ndvi:0.85 },
+      { name: 'Planalto Central (BR)', coords:[-15.7801,-47.9292], ndvi:0.62 },
+      { name: 'Midwest, EUA', coords:[39.0997,-94.5786], ndvi:0.55 },
+      { name: 'Europa (Corn Belt)', coords:[50.1109,8.6821], ndvi:0.44 },
+      { name: 'Sul da Índia', coords:[12.9716,77.5946], ndvi:0.48 }
+    ];
+
+    hotspots.forEach(h=>{
+      const circle = L.circle(h.coords, {
+        radius: 400000, // metros, apenas ilustrativo
+        color: ndviColor(h.ndvi),
+        fillColor: ndviColor(h.ndvi),
+        fillOpacity:0.35
+      }).addTo(map);
+      circle.on('click', ()=> selectRegion(h.name, h.coords, h.ndvi));
+    });
+
+    // Quando o usuário clica em qualquer ponto do mapa, seleciona a região
+    map.on('click', function(e){
+      const lat = e.latlng.lat.toFixed(4), lon = e.latlng.lng.toFixed(4);
+      // Criamos uma seleção simples com NDVI simulado (aleatório)
+      const simulatedNDVI = (0.2 + Math.random()*0.7).toFixed(2);
+      selectRegion(`Ponto (${lat}, ${lon})`, [lat, lon], simulatedNDVI);
+    });
+
+    // Função colore por NDVI
+    function ndviColor(val){
+      // val entre 0 e 1
+      if(val >= 0.7) return '#116530';
+      if(val >= 0.5) return '#2f9e44';
+      if(val >= 0.3) return '#7bd389';
+      return '#d6f5d9';
+    }
+
+    // Referências aos elementos
+    const regionNameEl = document.getElementById('regionName');
+    const ndviValEl = document.getElementById('ndviVal');
+    const idealPeriodEl = document.getElementById('idealPeriod');
+    const compareEl = document.getElementById('compare');
+
+    // Chart.js: cria gráfico vazio
+    const ctx = document.getElementById('ndviChart').getContext('2d');
+    let ndviChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [], // meses
+        datasets: [{
+          label: 'NDVI',
+          data: [],
+          tension:0.3,
+          borderWidth:2,
+          pointRadius:2,
+          borderColor:'#16a34a',
+          backgroundColor:'rgba(16,163,74,0.08)',
+          fill:true,
+        }]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        scales:{
+          y:{min:0,max:1}
+        },
+        plugins:{legend:{display:false}}
+      }
+    });
+
+    // Seleciona região e atualiza sidebar + gráfico (simulado)
+    function selectRegion(name, coords, ndvi){
+      regionNameEl.textContent = name;
+      ndviValEl.textContent = ndvi;
+      // Estimativa simples de período ideal: se NDVI alto -> logo; se baixo -> alerta
+      let period = '';
+      const v = parseFloat(ndvi);
+      if(v >= 0.7) period = 'Pico de floração ativo (agora)';
+      else if(v >= 0.45) period = 'Jan — Mar (próximo pico)';
+      else period = 'Acompanhamento recomendado (sazonal)';
+      idealPeriodEl.textContent = period;
+
+      // Comparação anual: gerar valor comparado aleatório
+      const comp = (Math.round((0.6 + Math.random()*0.3)*100)/100).toFixed(2);
+      compareEl.textContent = `${comp} (ano anterior)`;
+
+      // Gera série temporal simulada (12 meses)
+      const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+      const base = parseFloat(ndvi);
+      const series = months.map((m,i)=>{
+        // cria sazonalidade: base +- 0.15 * sin
+        const seasonal = base + 0.15 * Math.sin((i/12)*Math.PI*2) + (Math.random()-0.5)*0.06;
+        return Math.max(0, Math.min(1, seasonal.toFixed(3)));
+      });
+
+      // Atualiza gráfico
+      ndviChart.data.labels = months;
+      ndviChart.data.datasets[0].data = series;
+      ndviChart.update();
+
+      // Centraliza o mapa na coordenada (se vier em formato string)
+      if(Array.isArray(coords)){
+        map.setView([parseFloat(coords[0]), parseFloat(coords[1])], 6);
+      }
+    }
+
+    // Busca de região (geocoding simples via Nominatim)
+    document.getElementById('goBtn').addEventListener('click', async ()=>{
+      const q = document.getElementById('regionInput').value.trim();
+      if(!q) return alert('Digite uma cidade ou coordenadas');
+      // se parecer coordenada lat,lon -> centraliza
+      if(/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(q)){
+        const [lat,lon] = q.split(',').map(s=>parseFloat(s.trim()));
+        map.setView([lat,lon], 6);
+        selectRegion(`Coordenadas (${lat.toFixed(4)}, ${lon.toFixed(4)})`, [lat,lon], (0.3 + Math.random()*0.6).toFixed(2));
+        return;
+      }
+      // geocoding com Nominatim (sem api key)
+      try{
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if(data && data.length>0){
+          const place = data[0];
+          const lat = parseFloat(place.lat), lon = parseFloat(place.lon);
+          map.setView([lat,lon], 6);
+          selectRegion(place.display_name, [lat,lon], (0.3 + Math.random()*0.6).toFixed(2));
+        } else {
+          alert('Região não encontrada');
+        }
+      }catch(err){
+        console.error(err);
+        alert('Erro ao buscar região');
+      }
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      map.setView([0,0],2);
+      regionNameEl.textContent = 'Clique no mapa para selecionar uma área';
+      ndviValEl.textContent = '—';
+      idealPeriodEl.textContent = '—';
+      compareEl.textContent = '—';
+      ndviChart.data.labels = [];
+      ndviChart.data.datasets[0].data = [];
+      ndviChart.update();
+      document.getElementById('regionInput').value = '';
+    });
+
+    // Botão Hero para abrir o mapa (faz scroll)
+    document.getElementById('openMapBtn').addEventListener('click', ()=>{
+      document.getElementById('map').scrollIntoView({behavior:'smooth', block:'center'});
+    });
+
+    // Ajuste de layout para Chart.js (mantém responsivo)
+    function resizeChartCanvas(){
+      const canvas = document.getElementById('ndviChart');
+      // Chart.js irá ajustar automaticamente; apenas força redraw
+      if(ndviChart) ndviChart.resize();
+    }
+    window.addEventListener('resize', resizeChartCanvas);
+
+    // Nota: este protótipo usa dados simulados. Para produção:
+    // - substitua os hotspots por camadas NDVI reais (ex.: tiles MODIS/VIIRS)
+    // - consuma APIs NASA (ex.: GEE, MODIS/VIIRS) e calcule NDVI em backend
+    // - implemente cache e autenticação conforme necessário
+  </script>
+</body>
+</html>
